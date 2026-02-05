@@ -1,0 +1,5 @@
+{
+  "name": "Foam Fluid",
+  "description": "A Logic Stream interface for talent discovery. Translates natural language into a visual node-based query tree for iterative search.",
+  "requestFramePermissions": []
+}
