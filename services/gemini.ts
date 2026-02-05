@@ -49,6 +49,14 @@ semanticFilters: [
   { "type": "notes", "label": "Partnership Status", "description": "Not already partnered" }
 ]
 
+Example 2: Simple query "Coffee"
+semanticFilters: [
+  { "type": "visual", "label": "Coffee Content", "description": "Coffee, cafes, or brewing visible in videos" },
+  { "type": "audio", "label": "Coffee Discussion", "description": "Mentions coffee, cafes, or coffee culture" },
+  { "type": "context", "label": "Lifestyle Context", "description": "Morning routines, productivity, or cafe visits" },
+  { "type": "notes", "label": "Niche Alignment", "description": "Consistent coffee/lifestyle content creator" }
+]
+
 Rules:
 1. If this is the FIRST query (ROOT context), use "ROOT".
 2. If this is a FOLLOW-UP query (context exists):
@@ -57,7 +65,12 @@ Rules:
    - If the user says "also", "add", "include", use "OR".
    - If the user says "except", "no", "remove", use "NOT".
 3. Extract entities for location (e.g. "NY" -> "New York"), gender, platform.
-4. Always generate 2-4 semanticFilters that break down the query into searchable aspects.
+4. ALWAYS generate exactly 4 semanticFilters, even for simple queries. Infer reasonable aspects:
+   - For simple topic queries (e.g., "Coffee"), imagine a brand searching for creators:
+     - visual: The topic visible in content (e.g., "Coffee Products", "Coffee drinking/making")
+     - audio: Related spoken content (e.g., "Coffee discussion", "Cafe mentions")
+     - context: Likely content context (e.g., "Morning routine", "Lifestyle content")
+     - notes: Relevant creator attributes (e.g., "Content consistency", "Audience demographics")
 5. Return purely JSON.
 `;
 
