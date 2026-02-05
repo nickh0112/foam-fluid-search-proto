@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Creator, QueryNode, NikeCreator, MatchEvidence, MatchType, SemanticFilter } from '../types';
-import { MOCK_CREATORS, NIKE_CREATORS } from '../constants';
+import { Creator, QueryNode, NikeCreator, EnrichedCreator, MatchEvidence, MatchType, SemanticFilter } from '../types';
+import { MOCK_CREATORS, NIKE_CREATORS, COFFEE_CREATORS } from '../constants';
 import { MapPin, Instagram, Youtube, User, Plus, Eye, Mic, Type, StickyNote, Clock, ChevronDown } from 'lucide-react';
 import MatchTypeIndicators from './MatchTypeIndicators';
 import AgenticSearchHeader from './AgenticSearchHeader';
@@ -33,8 +33,9 @@ interface CanvasProps {
   results: Map<string, Creator[]>;
   onAddToDock: (creator: Creator, sourceNodeId: string) => void;
   onSelectCreator: (creator: Creator, sourceNodeId: string) => void;
-  isNikeMode?: boolean;
+  searchMode?: 'nike' | 'coffee' | 'standard';
   nikeCreators?: NikeCreator[];
+  coffeeCreators?: EnrichedCreator[];
   semanticFilters?: SemanticFilter[];
   currentSearchQuery?: string;
   isProcessing?: boolean;
@@ -136,17 +137,17 @@ const MatchTicker: React.FC<MatchTickerProps> = ({ keyword, highlight, customExc
 };
 
 const CreatorCard: React.FC<{
-  creator: Creator | NikeCreator;
+  creator: Creator | NikeCreator | EnrichedCreator;
   sourceNodeId: string;
   keyword: string;
   highlight: boolean;
   isDimmed: boolean;
   onAdd: () => void;
   onClick: () => void;
-  isNikeMode?: boolean;
-}> = ({ creator, sourceNodeId, keyword, highlight, isDimmed, onAdd, onClick, isNikeMode = false }) => {
-  // Type guard for Nike creator
-  const nikeCreator = isNikeMode ? (creator as NikeCreator) : null;
+  isBrandMode?: boolean;
+}> = ({ creator, sourceNodeId, keyword, highlight, isDimmed, onAdd, onClick, isBrandMode = false }) => {
+  // Type guard for enriched creator (has matches)
+  const enrichedCreator = isBrandMode && 'matches' in creator ? (creator as NikeCreator | EnrichedCreator) : null;
   const [isHovered, setIsHovered] = React.useState(false);
 
   return (
@@ -173,10 +174,10 @@ const CreatorCard: React.FC<{
       />
       
 
-      {/* Match Type Icons (Nike Mode) */}
-      {isNikeMode && nikeCreator && (
+      {/* Match Type Icons (Brand Mode) */}
+      {isBrandMode && enrichedCreator && (
         <div className="absolute top-12 right-2 z-20">
-          <MatchTypeIndicators matches={nikeCreator.matches} size="sm" />
+          <MatchTypeIndicators matches={enrichedCreator.matches} size="sm" />
         </div>
       )}
 
@@ -186,7 +187,7 @@ const CreatorCard: React.FC<{
              <div className="absolute -left-1 -top-1 w-10 h-10 rounded-full bg-black/50 blur-sm" />
              <img src={creator.avatar} alt="av" className="relative w-8 h-8 rounded-full border-2 border-zinc-900" />
          </div>
-         <div className={`flex items-center space-x-1 bg-black/60 backdrop-blur-md px-2 py-1 rounded-full border border-white/10 ${isNikeMode ? 'mt-0' : ''}`}>
+         <div className={`flex items-center space-x-1 bg-black/60 backdrop-blur-md px-2 py-1 rounded-full border border-white/10 ${isBrandMode ? 'mt-0' : ''}`}>
             <span className="text-[10px] font-bold text-white">{creator.handle}</span>
             <span className="text-[9px] text-zinc-400 border-l border-zinc-600 pl-1">{(creator.followers / 1000).toFixed(0)}k</span>
          </div>
@@ -209,12 +210,12 @@ const CreatorCard: React.FC<{
         <div className="bg-zinc-900/80 backdrop-blur-md rounded-lg p-2 border border-white/5 shadow-lg">
 
            {/* Timestamp Badge */}
-           {isNikeMode && nikeCreator?.matches[0]?.timestamp && (
+           {isBrandMode && enrichedCreator?.matches[0]?.timestamp && (
              <div className="flex items-center mb-2">
                <div className="flex items-center space-x-1.5 bg-blue-500/20 border border-blue-500/40 rounded px-2 py-1">
                  <Clock size={12} className="text-blue-400" />
                  <span className="text-xs font-mono font-bold text-blue-300">
-                   {nikeCreator.matches[0].timestamp}
+                   {enrichedCreator.matches[0].timestamp}
                  </span>
                </div>
                <span className="ml-2 text-[10px] text-zinc-500">Brand appears</span>
@@ -225,8 +226,8 @@ const CreatorCard: React.FC<{
            <MatchTicker
              keyword={keyword}
              highlight={highlight}
-             customExcerpt={isNikeMode && nikeCreator ? nikeCreator.matches[0]?.excerpt : undefined}
-             matchType={isNikeMode && nikeCreator ? nikeCreator.matches[0]?.type : undefined}
+             customExcerpt={isBrandMode && enrichedCreator ? enrichedCreator.matches[0]?.excerpt : undefined}
+             matchType={isBrandMode && enrichedCreator ? enrichedCreator.matches[0]?.type : undefined}
            />
            
            {/* Meta */}
@@ -259,7 +260,10 @@ const CreatorCard: React.FC<{
   );
 };
 
-const Canvas: React.FC<CanvasProps> = ({ nodes, results, onAddToDock, onSelectCreator, isNikeMode = false, nikeCreators = [], semanticFilters = [], currentSearchQuery = '', isProcessing = false }) => {
+const Canvas: React.FC<CanvasProps> = ({ nodes, results, onAddToDock, onSelectCreator, searchMode = 'standard', nikeCreators = [], coffeeCreators = [], semanticFilters = [], currentSearchQuery = '', isProcessing = false }) => {
+  const isNikeMode = searchMode === 'nike';
+  const isCoffeeMode = searchMode === 'coffee';
+  const isBrandMode = isNikeMode || isCoffeeMode;
   const activeNodes = nodes.filter(n => n.isActive && results.has(n.id) && results.get(n.id)?.length! > 0);
 
   // Refs for auto-scrolling
@@ -322,8 +326,8 @@ const Canvas: React.FC<CanvasProps> = ({ nodes, results, onAddToDock, onSelectCr
     );
   }
 
-  // Active Search but No Results (non-Nike mode)
-  if (activeNodes.length === 0 && !isNikeMode) {
+  // Active Search but No Results (non-brand mode)
+  if (activeNodes.length === 0 && !isBrandMode) {
     return (
       <div className="h-full flex flex-col items-center justify-center text-zinc-600">
          <User size={64} className="mb-4 opacity-20" />
@@ -333,10 +337,25 @@ const Canvas: React.FC<CanvasProps> = ({ nodes, results, onAddToDock, onSelectCr
     );
   }
 
-  // Nike Mode: Show Nike creators with sorting
-  if (isNikeMode && nikeCreators.length > 0) {
+  // Brand Mode: Show brand-specific creators with sorting (Nike or Coffee)
+  if (isBrandMode) {
+    // Get the appropriate creators based on mode
+    const brandCreators = isNikeMode ? nikeCreators : coffeeCreators;
+    const brandKeyword = isNikeMode ? 'Nike' : 'Coffee';
+    const sourceNodeId = isNikeMode ? 'nike-search' : 'coffee-search';
+
+    if (brandCreators.length === 0) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center text-zinc-600">
+           <User size={64} className="mb-4 opacity-20" />
+           <p className="text-xl font-light">No matches found.</p>
+           <p className="text-sm opacity-50 mt-2">Try adjusting your filters or "Also" branches.</p>
+        </div>
+      );
+    }
+
     // Sort creators based on selected option
-    const sortedCreators = [...nikeCreators].sort((a, b) => {
+    const sortedCreators = [...brandCreators].sort((a, b) => {
       switch (sortBy) {
         case 'relevance':
           return b.relevanceScore - a.relevanceScore;
@@ -450,19 +469,17 @@ const Canvas: React.FC<CanvasProps> = ({ nodes, results, onAddToDock, onSelectCr
 
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {sortedCreators.map(creator => {
-              const tickerKeyword = 'Nike';
-
               return (
                 <CreatorCard
                   key={creator.id}
                   creator={creator}
-                  sourceNodeId="nike-search"
-                  keyword={tickerKeyword}
+                  sourceNodeId={sourceNodeId}
+                  keyword={brandKeyword}
                   highlight={true}
                   isDimmed={false}
-                  onAdd={() => onAddToDock(creator, 'nike-search')}
-                  onClick={() => onSelectCreator(creator, 'nike-search')}
-                  isNikeMode={true}
+                  onAdd={() => onAddToDock(creator, sourceNodeId)}
+                  onClick={() => onSelectCreator(creator, sourceNodeId)}
+                  isBrandMode={true}
                 />
               );
             })}

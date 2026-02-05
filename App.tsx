@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { parseUserQuery } from './services/gemini';
 import { Creator, DockItem, QueryNode, Operator, NikeCreator, SemanticFilter, ParsedQueryResult } from './types';
-import { MOCK_CREATORS, NIKE_CREATORS } from './constants';
+import { MOCK_CREATORS, NIKE_CREATORS, COFFEE_CREATORS } from './constants';
 import Navbar from './components/Navbar';
 import Canvas from './components/Canvas';
 import Commander from './components/Commander';
@@ -279,6 +279,21 @@ const App: React.FC = () => {
     );
   }, [nodes]);
 
+  // Detect Coffee search mode
+  const isCoffeeSearch = useMemo(() => {
+    const coffeeTerms = ['coffee', 'espresso', 'latte', 'barista', 'cold brew', 'matcha', 'cafe', 'brew'];
+    return nodes.some(n =>
+      coffeeTerms.some(term => n.rawInput.toLowerCase().includes(term))
+    );
+  }, [nodes]);
+
+  // Determine search mode
+  const searchMode: 'nike' | 'coffee' | 'standard' = useMemo(() => {
+    if (isNikeSearch) return 'nike';
+    if (isCoffeeSearch) return 'coffee';
+    return 'standard';
+  }, [isNikeSearch, isCoffeeSearch]);
+
   // Determine Visibility
   const hasNodes = nodes.length > 0;
   const hasDockItems = dockItems.length > 0;
@@ -308,8 +323,9 @@ const App: React.FC = () => {
             results={nodeResults}
             onAddToDock={handleAddToDock}
             onSelectCreator={handleSelectCreator}
-            isNikeMode={isNikeSearch}
+            searchMode={searchMode}
             nikeCreators={NIKE_CREATORS}
+            coffeeCreators={COFFEE_CREATORS}
             semanticFilters={semanticFilters}
             currentSearchQuery={currentSearchQuery}
             isProcessing={isProcessing}
@@ -350,7 +366,7 @@ const App: React.FC = () => {
             handleAddToDock(c);
             setSelection(null);
         }}
-        isNikeMode={isNikeSearch}
+        searchMode={searchMode}
       />
 
     </div>

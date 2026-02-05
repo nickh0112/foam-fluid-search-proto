@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Creator, QueryNode, NikeCreator, MatchType } from '../types';
+import { Creator, QueryNode, NikeCreator, EnrichedCreator, MatchType } from '../types';
 import {
   X, MessageCircle, Heart, Plus, Play, Eye, Mic, Type, StickyNote, CheckCircle, Loader2
 } from 'lucide-react';
 import { generateCreatorRationale } from '../services/gemini';
 
 interface CreatorModalProps {
-  creator: Creator | NikeCreator | null;
+  creator: Creator | NikeCreator | EnrichedCreator | null;
   triggeringNode?: QueryNode;
   onClose: () => void;
   onAddToDock: (creator: Creator) => void;
-  isNikeMode?: boolean;
+  searchMode?: 'nike' | 'coffee' | 'standard';
 }
 
 // Match type configuration
@@ -51,44 +51,58 @@ const MATCH_TYPE_CONFIG: Record<MatchType, {
   }
 };
 
-const CreatorModal: React.FC<CreatorModalProps> = ({ creator, triggeringNode, onClose, onAddToDock, isNikeMode = false }) => {
+const CreatorModal: React.FC<CreatorModalProps> = ({ creator, triggeringNode, onClose, onAddToDock, searchMode = 'standard' }) => {
   const [rationale, setRationale] = useState<string | null>(null);
   const [isLoadingRationale, setIsLoadingRationale] = useState(false);
 
-  // Type guard for Nike creator
-  const nikeCreator = isNikeMode && creator && 'matches' in creator ? (creator as NikeCreator) : null;
+  const isBrandMode = searchMode === 'nike' || searchMode === 'coffee';
+
+  // Type guard for enriched creator (Nike or Coffee)
+  const enrichedCreator = isBrandMode && creator && 'matches' in creator ? (creator as NikeCreator | EnrichedCreator) : null;
+
+  // Check if it's specifically a Nike creator (has nikeAffinity) or generic enriched creator (has brandAffinity)
+  const isNikeCreator = enrichedCreator && 'nikeAffinity' in enrichedCreator;
+  const isCoffeeCreator = enrichedCreator && 'brandAffinity' in enrichedCreator;
+
+  // Get the brand affinity data regardless of type
+  const brandAffinity = isNikeCreator
+    ? { ...enrichedCreator.nikeAffinity, brand: 'Nike' }
+    : isCoffeeCreator
+      ? (enrichedCreator as EnrichedCreator).brandAffinity
+      : null;
 
   // Get search query from triggering node
-  const searchQuery = triggeringNode?.rawInput || 'Nike creators';
+  const brandLabel = brandAffinity?.brand || 'brand';
+  const searchQuery = triggeringNode?.rawInput || `${brandLabel} creators`;
 
   // Generate rationale using Gemini when modal opens
   useEffect(() => {
-    if (nikeCreator && nikeCreator.matches.length > 0) {
+    if (enrichedCreator && enrichedCreator.matches.length > 0 && brandAffinity) {
       setIsLoadingRationale(true);
       setRationale(null);
 
       generateCreatorRationale(
         searchQuery,
-        nikeCreator.name,
-        nikeCreator.matches.map(m => ({
+        enrichedCreator.name,
+        enrichedCreator.matches.map(m => ({
           type: m.type,
           excerpt: m.excerpt,
           timestamp: m.timestamp
         })),
-        nikeCreator.nikeAffinity
+        brandAffinity
       )
         .then((result) => {
           setRationale(result);
         })
         .catch((error) => {
           console.error('Failed to generate rationale:', error);
-          setRationale(`${nikeCreator.name} is a strong match for your "${searchQuery}" search based on authentic brand content.`);
+          setRationale(`${enrichedCreator.name} is a strong match for your "${searchQuery}" search based on authentic brand content.`);
         })
         .finally(() => {
           setIsLoadingRationale(false);
         });
     }
-  }, [nikeCreator?.id, searchQuery]);
+  }, [enrichedCreator?.id, searchQuery]);
 
   if (!creator) return null;
 
@@ -157,7 +171,7 @@ const CreatorModal: React.FC<CreatorModalProps> = ({ creator, triggeringNode, on
               <div className="space-y-6 animate-fade-in">
 
                 {/* Why They Qualify - Always at top */}
-                {nikeCreator && (
+                {enrichedCreator && (
                   <div className="bg-gradient-to-r from-emerald-500/10 to-green-500/10 p-4 rounded-xl border border-emerald-500/20">
                       <div className="flex items-start space-x-3">
                           <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center flex-shrink-0">
@@ -185,11 +199,11 @@ const CreatorModal: React.FC<CreatorModalProps> = ({ creator, triggeringNode, on
                 )}
 
                 {/* Evidence Section */}
-                {nikeCreator && nikeCreator.matches.length > 0 && (
+                {enrichedCreator && enrichedCreator.matches.length > 0 && (
                   <div>
                       <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Evidence</h3>
                       <div className="space-y-2">
-                          {nikeCreator.matches.map((match, index) => {
+                          {enrichedCreator.matches.map((match, index) => {
                               const config = MATCH_TYPE_CONFIG[match.type];
                               const Icon = config.icon;
 
@@ -217,25 +231,25 @@ const CreatorModal: React.FC<CreatorModalProps> = ({ creator, triggeringNode, on
                 )}
 
                 {/* Brand Affinity */}
-                {nikeCreator?.nikeAffinity && (
+                {brandAffinity && (
                   <div>
-                    <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">Brand Affinity</h3>
+                    <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-3">{brandAffinity.brand} Affinity</h3>
                     <div className="flex flex-wrap gap-2">
-                      {nikeCreator.nikeAffinity.partnership && (
+                      {brandAffinity.partnership && (
                         <span className="px-3 py-1.5 bg-orange-500/10 text-orange-400 rounded-lg text-xs font-medium border border-orange-500/20">
-                          {nikeCreator.nikeAffinity.partnership}
+                          {brandAffinity.partnership}
                         </span>
                       )}
                       <span className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
-                        nikeCreator.nikeAffinity.mentionFrequency === 'high'
+                        brandAffinity.mentionFrequency === 'high'
                           ? 'bg-green-500/10 text-green-400 border-green-500/20'
-                          : nikeCreator.nikeAffinity.mentionFrequency === 'medium'
+                          : brandAffinity.mentionFrequency === 'medium'
                           ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
                           : 'bg-zinc-800 text-zinc-400 border-zinc-700'
                       }`}>
-                        {nikeCreator.nikeAffinity.mentionFrequency} mentions
+                        {brandAffinity.mentionFrequency} mentions
                       </span>
-                      {nikeCreator.nikeAffinity.brandAlignment.slice(0, 3).map((tag, i) => (
+                      {brandAffinity.brandAlignment.slice(0, 3).map((tag, i) => (
                         <span key={i} className="px-3 py-1.5 bg-zinc-800 text-zinc-300 rounded-lg text-xs border border-zinc-700">
                           {tag}
                         </span>

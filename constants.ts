@@ -1,4 +1,4 @@
-import { Creator, NikeCreator, ContentType } from './types';
+import { Creator, NikeCreator, EnrichedCreator, ContentType } from './types';
 
 // Nike Demo Creators - Sorted by relevance score for Nike brand search
 export const NIKE_CREATORS: NikeCreator[] = [
@@ -337,6 +337,278 @@ export const NIKE_CREATORS: NikeCreator[] = [
     nikeAffinity: {
       mentionFrequency: 'high',
       brandAlignment: ['Women\'s Basketball', 'Female Athletes', 'Sports Empowerment']
+    }
+  }
+];
+
+// Coffee Demo Creators - Sorted by relevance score for Coffee brand search
+export const COFFEE_CREATORS: EnrichedCreator[] = [
+  {
+    id: 'coffee1',
+    name: 'Barista Ben',
+    handle: '@baristaben',
+    avatar: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?w=100&h=100&fit=crop&crop=face',
+    thumbnail: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&h=700&fit=crop',
+    gender: 'Male',
+    location: 'Seattle',
+    platform: 'YouTube',
+    followers: 890000,
+    engagementRate: 7.2,
+    topics: ['Espresso', 'Latte Art', 'Coffee'],
+    contentType: 'Video',
+    relevanceScore: 97,
+    matches: [
+      {
+        type: 'visual',
+        confidence: 96,
+        timestamp: '0:15',
+        excerpt: 'Demonstrating perfect rosetta latte art technique',
+        context: 'Tutorial content with high production value'
+      },
+      {
+        type: 'audio',
+        confidence: 94,
+        timestamp: '2:30',
+        excerpt: '"The key to great espresso is understanding your grind size and extraction time"',
+        context: 'Educational coffee content'
+      },
+      {
+        type: 'personalNote',
+        confidence: 90,
+        excerpt: 'Former World Latte Art Championship competitor, authentic expertise',
+        context: 'Internal CRM note'
+      }
+    ],
+    brandAffinity: {
+      brand: 'Coffee',
+      partnership: 'La Marzocco Ambassador',
+      mentionFrequency: 'high',
+      brandAlignment: ['Specialty Coffee', 'Barista Culture', 'Coffee Education']
+    }
+  },
+  {
+    id: 'coffee2',
+    name: 'Cold Brew Carly',
+    handle: '@coldbrewcarly',
+    avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=100&h=100&fit=crop&crop=face',
+    thumbnail: 'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=400&h=700&fit=crop',
+    gender: 'Female',
+    location: 'Austin',
+    platform: 'TikTok',
+    followers: 1450000,
+    engagementRate: 9.8,
+    topics: ['Cold Brew', 'Coffee Recipes', 'Summer Drinks'],
+    contentType: 'Reel',
+    relevanceScore: 95,
+    matches: [
+      {
+        type: 'visual',
+        confidence: 95,
+        timestamp: '0:03',
+        excerpt: 'Pouring signature cold brew over ice with slow-mo effect',
+        context: 'Aesthetic content with 2.1M views'
+      },
+      {
+        type: 'caption',
+        confidence: 92,
+        excerpt: 'My secret cold brew ratio for the smoothest coffee ever ☕️ #ColdBrew #CoffeeTok',
+        context: 'Viral recipe post'
+      }
+    ],
+    brandAffinity: {
+      brand: 'Coffee',
+      mentionFrequency: 'high',
+      brandAlignment: ['Gen-Z Coffee Culture', 'Recipe Content', 'Iced Coffee Trends']
+    }
+  },
+  {
+    id: 'coffee3',
+    name: 'Matcha Maya',
+    handle: '@matchamaya',
+    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&crop=face',
+    thumbnail: 'https://images.unsplash.com/photo-1536256263959-770b48d82b0a?w=400&h=700&fit=crop',
+    gender: 'Female',
+    location: 'Los Angeles',
+    platform: 'Instagram',
+    followers: 720000,
+    engagementRate: 6.5,
+    topics: ['Matcha', 'Tea', 'Wellness'],
+    contentType: 'Post',
+    relevanceScore: 88,
+    matches: [
+      {
+        type: 'visual',
+        confidence: 91,
+        timestamp: '0:08',
+        excerpt: 'Matcha latte art in ceramic cup with natural lighting',
+        context: 'Aesthetic wellness content'
+      },
+      {
+        type: 'caption',
+        confidence: 87,
+        excerpt: 'Swapped my afternoon coffee for matcha and never looked back 🍵 #MatchaLatte',
+        context: 'Lifestyle integration post'
+      }
+    ],
+    brandAffinity: {
+      brand: 'Coffee',
+      mentionFrequency: 'medium',
+      brandAlignment: ['Wellness', 'Tea Culture', 'Mindful Drinking']
+    }
+  },
+  {
+    id: 'coffee4',
+    name: 'Brew Master Mike',
+    handle: '@brewmastermike',
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&crop=face',
+    thumbnail: 'https://images.unsplash.com/photo-1518057111178-44a106bad636?w=400&h=700&fit=crop',
+    gender: 'Male',
+    location: 'Portland',
+    platform: 'YouTube',
+    followers: 560000,
+    engagementRate: 8.1,
+    topics: ['Home Brewing', 'Pour Over', 'Coffee Gear'],
+    contentType: 'Video',
+    relevanceScore: 94,
+    matches: [
+      {
+        type: 'visual',
+        confidence: 94,
+        timestamp: '1:20',
+        excerpt: 'Side-by-side comparison of V60 vs Chemex pour over methods',
+        context: 'Educational gear review'
+      },
+      {
+        type: 'audio',
+        confidence: 91,
+        timestamp: '4:15',
+        excerpt: '"The bloom phase is where all the magic happens - don\'t rush it"',
+        context: 'Technical brewing explanation'
+      },
+      {
+        type: 'personalNote',
+        confidence: 88,
+        excerpt: 'Go-to resource for home brewing education, highly trusted by coffee community',
+        context: 'Analyst observation'
+      }
+    ],
+    brandAffinity: {
+      brand: 'Coffee',
+      partnership: 'Fellow Products Partner',
+      mentionFrequency: 'high',
+      brandAlignment: ['Home Brewing', 'Coffee Gear', 'Education']
+    }
+  },
+  {
+    id: 'coffee5',
+    name: 'Cafe Wanderer',
+    handle: '@cafewanderer',
+    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop&crop=face',
+    thumbnail: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=400&h=700&fit=crop',
+    gender: 'Female',
+    location: 'Brooklyn',
+    platform: 'Instagram',
+    followers: 340000,
+    engagementRate: 5.9,
+    topics: ['Cafe Culture', 'Travel', 'Coffee Shops'],
+    contentType: 'Post',
+    relevanceScore: 86,
+    matches: [
+      {
+        type: 'visual',
+        confidence: 89,
+        timestamp: '0:05',
+        excerpt: 'Cozy corner of specialty coffee shop with vintage decor',
+        context: 'Aesthetic cafe discovery content'
+      },
+      {
+        type: 'caption',
+        confidence: 85,
+        excerpt: 'Found the most underrated coffee shop in Brooklyn 📍 #CafeHopping #CoffeeTravel',
+        context: 'Location discovery post with high saves'
+      }
+    ],
+    brandAffinity: {
+      brand: 'Coffee',
+      mentionFrequency: 'medium',
+      brandAlignment: ['Cafe Discovery', 'Urban Lifestyle', 'Coffee Tourism']
+    }
+  },
+  {
+    id: 'coffee6',
+    name: 'Espresso Eddie',
+    handle: '@espressoeddie',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&crop=face',
+    thumbnail: 'https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&h=700&fit=crop',
+    gender: 'Male',
+    location: 'Chicago',
+    platform: 'TikTok',
+    followers: 980000,
+    engagementRate: 11.2,
+    topics: ['Espresso', 'Cafe Reviews', 'Coffee Humor'],
+    contentType: 'Reel',
+    relevanceScore: 92,
+    matches: [
+      {
+        type: 'visual',
+        confidence: 93,
+        timestamp: '0:02',
+        excerpt: 'POV: reviewing espresso shots at different price points',
+        context: 'Entertaining comparison content'
+      },
+      {
+        type: 'audio',
+        confidence: 90,
+        timestamp: '0:18',
+        excerpt: '"This $2 espresso hits different than the $8 one and I need to talk about it"',
+        context: 'Authentic review commentary'
+      }
+    ],
+    brandAffinity: {
+      brand: 'Coffee',
+      mentionFrequency: 'high',
+      brandAlignment: ['Coffee Reviews', 'Entertainment', 'Authentic Voice']
+    }
+  },
+  {
+    id: 'coffee7',
+    name: 'Morning Ritual Rachel',
+    handle: '@morningritualrachel',
+    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop&crop=face',
+    thumbnail: 'https://images.unsplash.com/photo-1497935586351-b67a49e012bf?w=400&h=700&fit=crop',
+    gender: 'Female',
+    location: 'Denver',
+    platform: 'Instagram',
+    followers: 420000,
+    engagementRate: 7.8,
+    topics: ['Morning Routine', 'Lifestyle', 'Wellness'],
+    contentType: 'Story',
+    relevanceScore: 84,
+    matches: [
+      {
+        type: 'visual',
+        confidence: 88,
+        timestamp: '0:12',
+        excerpt: 'Sunrise coffee moment on mountain-view balcony',
+        context: 'Aspirational lifestyle content'
+      },
+      {
+        type: 'caption',
+        confidence: 84,
+        excerpt: 'My 5AM coffee ritual is non-negotiable ☀️ #MorningRoutine #CoffeeLover',
+        context: 'Routine content with high engagement'
+      },
+      {
+        type: 'personalNote',
+        confidence: 82,
+        excerpt: 'Strong lifestyle integration - coffee appears in 45% of morning content organically',
+        context: 'Content audit observation'
+      }
+    ],
+    brandAffinity: {
+      brand: 'Coffee',
+      mentionFrequency: 'medium',
+      brandAlignment: ['Lifestyle', 'Morning Routines', 'Wellness Integration']
     }
   }
 ];

@@ -39,7 +39,7 @@ export interface DockItem {
   note?: string; // "Why I picked this"
 }
 
-// Nike Demo Types
+// Brand Demo Types
 export type MatchType = 'visual' | 'audio' | 'caption' | 'personalNote';
 
 export type ContentType = 'Reel' | 'Story' | 'Post' | 'Video' | 'Paid';
@@ -52,6 +52,23 @@ export interface MatchEvidence {
   context?: string;   // Additional context
 }
 
+// Generic brand affinity interface
+export interface BrandAffinity {
+  brand: string;
+  partnership?: string;
+  mentionFrequency: 'high' | 'medium' | 'low';
+  brandAlignment: string[];
+}
+
+// Generic enriched creator with brand affinity
+export interface EnrichedCreator extends Creator {
+  relevanceScore: number; // 0-100
+  matches: MatchEvidence[];
+  contentType?: ContentType;
+  brandAffinity: BrandAffinity;
+}
+
+// Nike-specific type (extends EnrichedCreator for backward compatibility)
 export interface NikeCreator extends Creator {
   relevanceScore: number; // 0-100
   matches: MatchEvidence[];
