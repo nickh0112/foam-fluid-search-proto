@@ -4,6 +4,7 @@ import { Search, Sparkles, Filter, ArrowLeft, Check, X, SlidersHorizontal, MapPi
 interface CommanderProps {
   onSubmit: (input: string) => void;
   isProcessing: boolean;
+  viewMode?: 'creators' | 'account-posts';
 }
 
 const GHOST_PROMPTS = [
@@ -13,12 +14,20 @@ const GHOST_PROMPTS = [
   "Try: 'Also add fitness creators in LA'"
 ];
 
+const POST_GHOST_PROMPTS = [
+  "Try: 'Reels with visual signals'",
+  "Try: 'Posts with over 100k views'",
+  "Try: 'Nike mentions in captions'",
+  "Try: 'Most engaged videos'"
+];
+
 type FilterMode = 'search' | 'select' | 'input';
 type FilterType = 'followers' | null;
 
-const Commander: React.FC<CommanderProps> = ({ onSubmit, isProcessing }) => {
+const Commander: React.FC<CommanderProps> = ({ onSubmit, isProcessing, viewMode = 'creators' }) => {
+  const prompts = viewMode === 'account-posts' ? POST_GHOST_PROMPTS : GHOST_PROMPTS;
   const [input, setInput] = useState('');
-  const [ghostText, setGhostText] = useState(GHOST_PROMPTS[0]);
+  const [ghostText, setGhostText] = useState(prompts[0]);
   const [promptIndex, setPromptIndex] = useState(0);
   const [internalGhost, setInternalGhost] = useState('');
 
@@ -29,21 +38,27 @@ const Commander: React.FC<CommanderProps> = ({ onSubmit, isProcessing }) => {
   // Input Temp States
   const [sliderValue, setSliderValue] = useState(0);
 
+  // Reset prompt index when view mode changes
+  useEffect(() => {
+    setPromptIndex(0);
+    setGhostText(prompts[0]);
+  }, [viewMode]);
+
   // Rotation logic for empty state
   useEffect(() => {
     if (input || mode !== 'search') return;
     const interval = setInterval(() => {
-      setPromptIndex(prev => (prev + 1) % GHOST_PROMPTS.length);
+      setPromptIndex(prev => (prev + 1) % prompts.length);
     }, 4000);
     return () => clearInterval(interval);
-  }, [input, mode]);
+  }, [input, mode, prompts]);
 
   useEffect(() => {
     if (!input && mode === 'search') {
-      setGhostText(GHOST_PROMPTS[promptIndex]);
+      setGhostText(prompts[promptIndex]);
       setInternalGhost('');
     }
-  }, [promptIndex, input, mode]);
+  }, [promptIndex, input, mode, prompts]);
 
   // Intent detection logic
   useEffect(() => {
@@ -128,14 +143,16 @@ const Commander: React.FC<CommanderProps> = ({ onSubmit, isProcessing }) => {
           </div>
 
           <div className="flex-shrink-0 ml-3 flex items-center space-x-2">
-            <button 
-                type="button"
-                onClick={() => setMode('select')}
-                className="text-zinc-500 hover:text-white transition-colors p-1 rounded-md hover:bg-zinc-800"
-                title="Open Filters"
-            >
-                <Filter size={18} />
-            </button>
+            {viewMode !== 'account-posts' && (
+              <button
+                  type="button"
+                  onClick={() => setMode('select')}
+                  className="text-zinc-500 hover:text-white transition-colors p-1 rounded-md hover:bg-zinc-800"
+                  title="Open Filters"
+              >
+                  <Filter size={18} />
+              </button>
+            )}
             <span className="hidden sm:inline-block text-[10px] text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded font-mono border border-zinc-700">
               ⏎
             </span>
@@ -195,8 +212,8 @@ const Commander: React.FC<CommanderProps> = ({ onSubmit, isProcessing }) => {
   return (
     <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 w-full max-w-2xl px-4 z-50">
       
-      {/* Suggestions Breadcrumbs (Above) - Only show in search mode */}
-      {!input && !isProcessing && mode === 'search' && (
+      {/* Suggestions Breadcrumbs (Above) - Only show in search mode, hidden for account-posts */}
+      {!input && !isProcessing && mode === 'search' && viewMode !== 'account-posts' && (
          <div className="flex justify-center mb-3 space-x-2 animate-fade-in-up">
             <button onClick={() => setInput('Nike')} className="text-[10px] font-mono text-orange-400 bg-orange-500/10 backdrop-blur px-3 py-1.5 rounded border border-orange-500/30 hover:border-orange-500/60 hover:bg-orange-500/20 transition-colors font-bold">
                Nike

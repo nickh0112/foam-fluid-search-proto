@@ -1,12 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Creator, QueryNode, NikeCreator, EnrichedCreator, MatchEvidence, MatchType, SemanticFilter } from '../types';
+import { Creator, QueryNode, NikeCreator, EnrichedCreator, MatchEvidence, MatchType, SemanticFilter, CreatorAccount, CreatorPost, PostFilterState, PostSortOption } from '../types';
 import { MOCK_CREATORS, NIKE_CREATORS, COFFEE_CREATORS } from '../constants';
 import { MapPin, Instagram, Youtube, User, Plus, Eye, Mic, Type, StickyNote, Clock, ChevronDown } from 'lucide-react';
 import MatchTypeIndicators from './MatchTypeIndicators';
 import AgenticSearchHeader from './AgenticSearchHeader';
+import PostCard from './PostCard';
+import PostCardSkeleton from './PostCardSkeleton';
+import PostDetailModal from './PostDetailModal';
+import PostFilterBar from './PostFilterBar';
 
 // Sort options for Nike mode
 type SortOption = 'relevance' | 'evidence' | 'engagement' | 'recency' | 'followers';
+
+const POST_SORT_OPTIONS: { value: PostSortOption; label: string; description: string }[] = [
+  { value: 'composite', label: 'Composite Score', description: 'Highest relevance score' },
+  { value: 'signals', label: 'Signal Count', description: 'Most signal types found' },
+  { value: 'engagement', label: 'Engagement', description: 'Most engaged posts' },
+  { value: 'recency', label: 'Recency', description: 'Most recent posts' },
+];
 
 const SORT_OPTIONS: { value: SortOption; label: string; description: string }[] = [
   { value: 'relevance', label: 'Relevance', description: 'Best match for your search' },
@@ -33,12 +44,23 @@ interface CanvasProps {
   results: Map<string, Creator[]>;
   onAddToDock: (creator: Creator, sourceNodeId: string) => void;
   onSelectCreator: (creator: Creator, sourceNodeId: string) => void;
-  searchMode?: 'nike' | 'coffee' | 'standard';
+  searchMode?: 'nike' | 'coffee' | 'standard' | 'single-creator';
   nikeCreators?: NikeCreator[];
   coffeeCreators?: EnrichedCreator[];
   semanticFilters?: SemanticFilter[];
   currentSearchQuery?: string;
   isProcessing?: boolean;
+  singleCreatorAccount?: CreatorAccount;
+  rankedPosts?: CreatorPost[];
+  totalPosts?: number;
+  postFilters?: PostFilterState;
+  onPostFiltersChange?: (filters: PostFilterState) => void;
+  postSortBy?: PostSortOption;
+  onPostSortByChange?: (sort: PostSortOption) => void;
+  hasPostSearched?: boolean;
+  isPostSearching?: boolean;
+  onAddPostToDock?: (post: CreatorPost) => void;
+  selectedPostIds?: string[];
 }
 
 interface MatchTickerProps {
@@ -260,9 +282,10 @@ const CreatorCard: React.FC<{
   );
 };
 
-const Canvas: React.FC<CanvasProps> = ({ nodes, results, onAddToDock, onSelectCreator, searchMode = 'standard', nikeCreators = [], coffeeCreators = [], semanticFilters = [], currentSearchQuery = '', isProcessing = false }) => {
+const Canvas: React.FC<CanvasProps> = ({ nodes, results, onAddToDock, onSelectCreator, searchMode = 'standard', nikeCreators = [], coffeeCreators = [], semanticFilters = [], currentSearchQuery = '', isProcessing = false, singleCreatorAccount, rankedPosts = [], totalPosts = 0, postFilters, onPostFiltersChange, postSortBy: postSortByProp, onPostSortByChange, hasPostSearched = false, isPostSearching = false, onAddPostToDock, selectedPostIds = [] }) => {
   const isNikeMode = searchMode === 'nike';
   const isCoffeeMode = searchMode === 'coffee';
+  const isSingleCreatorMode = searchMode === 'single-creator';
   const isBrandMode = isNikeMode || isCoffeeMode;
   const activeNodes = nodes.filter(n => n.isActive && results.has(n.id) && results.get(n.id)?.length! > 0);
 
@@ -273,6 +296,14 @@ const Canvas: React.FC<CanvasProps> = ({ nodes, results, onAddToDock, onSelectCr
   // Sort state (must be at top level, not inside conditionals)
   const [sortBy, setSortBy] = useState<SortOption>('relevance');
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
+
+  // Single-creator sort (driven by props, fallback to local)
+  const postSortBy = postSortByProp || 'composite';
+  const setPostSortBy = onPostSortByChange || (() => {});
+  const [postSortDropdownOpen, setPostSortDropdownOpen] = useState(false);
+
+  // Post detail modal state
+  const [selectedPost, setSelectedPost] = useState<{ post: CreatorPost; rank: number } | null>(null);
 
   useEffect(() => {
     // Detect if a new node was added
@@ -288,6 +319,158 @@ const Canvas: React.FC<CanvasProps> = ({ nodes, results, onAddToDock, onSelectCr
     }
     prevNodeCount.current = nodes.length;
   }, [nodes]);
+
+  // ============================
+  // SINGLE-CREATOR MODE
+  // ============================
+  if (isSingleCreatorMode && singleCreatorAccount) {
+    const account = singleCreatorAccount;
+
+    // Sort posts
+    const sortedPosts = [...rankedPosts].sort((a, b) => {
+      switch (postSortBy) {
+        case 'composite': return b.compositeScore - a.compositeScore;
+        case 'signals': return b.scoreBreakdown.signalCount - a.scoreBreakdown.signalCount || b.compositeScore - a.compositeScore;
+        case 'engagement': return (b.stats.likes + b.stats.comments) - (a.stats.likes + a.stats.comments);
+        case 'recency': return new Date(b.postedAt).getTime() - new Date(a.postedAt).getTime();
+        default: return 0;
+      }
+    });
+
+    // Get rank based on composite score ordering (always by score for rank badges)
+    const scoreRanks = [...rankedPosts]
+      .sort((a, b) => b.compositeScore - a.compositeScore)
+      .reduce((map, post, i) => { map[post.id] = i + 1; return map; }, {} as Record<string, number>);
+
+    const currentPostSort = POST_SORT_OPTIONS.find(o => o.value === postSortBy)!;
+
+    return (
+      <div className="h-full overflow-y-auto p-4 sm:p-8 pb-32 scroll-smooth">
+        {/* Account Header */}
+        <div className="sticky -top-4 sm:-top-8 z-40 bg-zinc-950 pt-7 sm:pt-11 pb-3 mb-4 border-b border-zinc-800 -mx-4 sm:-mx-8 px-4 sm:px-8">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <img src={account.avatar} alt={account.name} className="w-9 h-9 rounded-full border-2 border-zinc-700" />
+              <div className="flex items-center space-x-2">
+                <h2 className="text-sm font-bold text-white">{account.name}</h2>
+                <span className="text-xs text-zinc-500 font-mono">·</span>
+                <span className="text-xs text-zinc-500 font-mono">{account.handle}</span>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="bg-zinc-800/60 border border-zinc-700/50 rounded-full px-2.5 py-1 text-[11px] text-zinc-300">{account.platform}</span>
+              <span className="bg-zinc-800/60 border border-zinc-700/50 rounded-full px-2.5 py-1 text-[11px] text-zinc-300"><span className="text-white font-medium">{(account.followers / 1000).toFixed(0)}k</span> followers</span>
+              <span className="bg-zinc-800/60 border border-zinc-700/50 rounded-full px-2.5 py-1 text-[11px] text-zinc-300"><span className="text-white font-medium">{account.engagementRate}%</span> ER</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Filter Bar */}
+        {postFilters && onPostFiltersChange && (
+          <PostFilterBar
+            filters={postFilters}
+            onFiltersChange={onPostFiltersChange}
+            totalPosts={totalPosts}
+            filteredCount={rankedPosts.length}
+          />
+        )}
+
+        {/* Results count + Sort */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-3">
+            <span className="text-sm text-zinc-400">
+              <span className="text-white font-bold">{sortedPosts.length}</span>{hasPostSearched ? ' posts ranked by relevance' : ' posts'}
+            </span>
+            <span className="text-[10px] text-zinc-600">|</span>
+
+            {/* Sort Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setPostSortDropdownOpen(!postSortDropdownOpen)}
+                className="flex items-center space-x-2 px-3 py-1.5 bg-zinc-800/50 hover:bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-300 transition-colors"
+              >
+                <span className="text-zinc-500">Sort:</span>
+                <span className="font-medium text-white">{currentPostSort.label}</span>
+                <ChevronDown size={14} className={`text-zinc-500 transition-transform ${postSortDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {postSortDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setPostSortDropdownOpen(false)} />
+                  <div className="absolute top-full left-0 mt-1 w-56 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl z-40 overflow-hidden">
+                    {POST_SORT_OPTIONS.map((option) => (
+                      <button
+                        key={option.value}
+                        onClick={() => { setPostSortBy(option.value); setPostSortDropdownOpen(false); }}
+                        className={`w-full px-4 py-3 text-left hover:bg-zinc-800 transition-colors border-b border-zinc-800 last:border-b-0 ${
+                          postSortBy === option.value ? 'bg-zinc-800' : ''
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className={`text-sm font-medium ${postSortBy === option.value ? 'text-blue-400' : 'text-white'}`}>
+                            {option.label}
+                          </span>
+                          {postSortBy === option.value && <div className="w-2 h-2 rounded-full bg-blue-400" />}
+                        </div>
+                        <p className="text-[10px] text-zinc-500 mt-0.5">{option.description}</p>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Legend — only show after a search */}
+          {hasPostSearched && (
+            <div className="hidden md:flex items-center space-x-4 text-[10px] text-zinc-500">
+              <div className="flex items-center space-x-1">
+                <div className="w-2 h-2 rounded-full bg-orange-400" />
+                <span>Caption</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <div className="w-2 h-2 rounded-full bg-green-400" />
+                <span>Audio</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <div className="w-2 h-2 rounded-full bg-blue-400" />
+                <span>Visual</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Post Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          {isPostSearching
+            ? Array.from({ length: 10 }).map((_, i) => <PostCardSkeleton key={`skel-${i}`} />)
+            : sortedPosts.map(post => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  rank={scoreRanks[post.id] || 0}
+                  onClick={() => setSelectedPost({ post, rank: scoreRanks[post.id] || 0 })}
+                  showScoring={hasPostSearched}
+                  onAdd={onAddPostToDock ? () => onAddPostToDock(post) : undefined}
+                  isSelected={selectedPostIds.includes(post.id)}
+                />
+              ))
+          }
+        </div>
+
+        {/* Post Detail Modal */}
+        <PostDetailModal
+          post={selectedPost?.post || null}
+          rank={selectedPost?.rank || 0}
+          onClose={() => setSelectedPost(null)}
+          searchTerm={postFilters?.searchTerm}
+          creatorName={singleCreatorAccount?.name}
+          onAdd={onAddPostToDock && selectedPost ? () => onAddPostToDock(selectedPost.post) : undefined}
+          isSelected={selectedPost ? selectedPostIds.includes(selectedPost.post.id) : false}
+        />
+      </div>
+    );
+  }
 
   // Initial Load State: Show All Creators
   if (nodes.length === 0) {

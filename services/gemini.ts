@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { QueryNode, DockItem, SemanticFilter, ParsedQueryResult } from "../types";
+import { QueryNode, DockItem, PostDockItem, SemanticFilter, ParsedQueryResult, ParsedPostFilterResult, CreatorPost } from "../types";
 
 // In a real app, this would be initialized properly.
 // Uses VITE_GEMINI_API_KEY from environment (Vite requires VITE_ prefix)
@@ -222,6 +222,207 @@ Write 2-3 sentences explaining why this creator is a great match for this specif
     console.error("Rationale Generation Error:", error);
     // Fallback
     return `${creatorName} matches your search for "${searchQuery}" based on authentic content featuring the brand.`;
+  }
+};
+
+/**
+ * Generate a "Why This Matches" rationale for a specific post
+ * Uses the post's signals and caption to explain relevance to the search
+ */
+export const generatePostRationale = async (
+  searchTerm: string,
+  creatorName: string,
+  post: CreatorPost
+): Promise<string> => {
+  try {
+    const ai = getAI();
+
+    const evidenceList = post.signals.map(s => {
+      const typeLabel = s.type === 'visual' ? 'Visual' :
+                        s.type === 'audio' ? 'Audio' :
+                        s.type === 'caption' ? 'Caption' : 'Note';
+      return `- ${typeLabel}: "${s.excerpt}"${s.timestamp ? ` (at ${s.timestamp})` : ''}`;
+    }).join('\n');
+
+    const captionSnippet = post.caption.length > 200
+      ? post.caption.slice(0, 200) + '...'
+      : post.caption;
+
+    const prompt = `You are writing a brief "Why This Matches" summary for a post on a talent discovery platform.
+
+Search query: "${searchTerm}"
+Creator: ${creatorName}
+Post caption: "${captionSnippet}"
+
+Evidence found in this post:
+${evidenceList}
+
+Write 2-3 sentences explaining why this post matches the search. Be specific - reference the actual evidence. Keep it concise and compelling. Focus on what makes THIS post relevant to THIS search.`;
+
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: prompt,
+    });
+
+    return response.text || `This post matches your search for "${searchTerm}".`;
+  } catch (error) {
+    console.error("Post Rationale Generation Error:", error);
+    return `This post matches your search for "${searchTerm}".`;
+  }
+};
+
+// --- Post Query Parser (Account Posts Mode) ---
+
+const POST_QUERY_SYSTEM_INSTRUCTION = `
+You are a query parser for filtering a creator's posts on a talent discovery platform.
+Your goal is to translate natural language user input into structured filter parameters.
+
+The posts have:
+- contentType: "Reel" | "Story" | "Post" | "Video" | "Paid"
+- signals with types: "visual" | "audio" | "caption"
+- stats: views, likes, comments, shares
+- postedAt date
+- caption text
+
+Output JSON Format:
+{
+  "filters": {
+    "contentTypes": string[] | [],
+    "signalTypes": string[] | [],
+    "minViews": number | null,
+    "minLikes": number | null,
+    "dateFrom": string | null,
+    "dateTo": string | null,
+    "searchTerm": string | null
+  },
+  "sortBy": "composite" | "signals" | "engagement" | "recency" | null
+}
+
+Rules:
+1. Map content type references: "reels" → ["Reel"], "stories" → ["Story"], "videos" → ["Video"], "posts" → ["Post"]
+2. Map signal type references: "audio signals" → ["audio"], "visual" → ["visual"], "caption" → ["caption"]
+3. Convert engagement numbers: "100k views" → minViews: 100000, "50k likes" → minLikes: 50000
+4. For date ranges: "last 30 days" → dateFrom as ISO string 30 days ago, "last week" → 7 days ago
+5. For brand/topic mentions (e.g. "nike", "coffee"), use searchTerm
+6. If the query suggests a sort preference (e.g. "most viewed", "newest"), set sortBy accordingly
+7. If the input doesn't match any structured filter, treat the entire input as searchTerm
+8. Return empty arrays for contentTypes/signalTypes when not specified (means show all)
+
+Examples:
+- "reels with audio signals" → { contentTypes: ["Reel"], signalTypes: ["audio"] }
+- "posts with over 100k views" → { minViews: 100000 }
+- "nike" → { searchTerm: "nike" }
+- "most engaged reels" → { contentTypes: ["Reel"], sortBy: "engagement" }
+- "recent posts with visual signals" → { signalTypes: ["visual"], sortBy: "recency" }
+`;
+
+export const parsePostQuery = async (input: string): Promise<ParsedPostFilterResult> => {
+  try {
+    const ai = getAI();
+
+    const response = await Promise.race([
+      ai.models.generateContent({
+        model: modelName,
+        contents: `User Input: "${input}"`,
+        config: {
+          systemInstruction: POST_QUERY_SYSTEM_INSTRUCTION,
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              filters: {
+                type: Type.OBJECT,
+                properties: {
+                  contentTypes: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                  signalTypes: { type: Type.ARRAY, items: { type: Type.STRING }, nullable: true },
+                  minViews: { type: Type.NUMBER, nullable: true },
+                  minLikes: { type: Type.NUMBER, nullable: true },
+                  dateFrom: { type: Type.STRING, nullable: true },
+                  dateTo: { type: Type.STRING, nullable: true },
+                  searchTerm: { type: Type.STRING, nullable: true },
+                },
+              },
+              sortBy: { type: Type.STRING, enum: ["composite", "signals", "engagement", "recency"], nullable: true },
+            },
+          },
+        },
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Gemini timeout')), 5000)
+      ),
+    ]);
+
+    const text = response.text;
+    if (!text) throw new Error("No response from AI");
+
+    const parsed = JSON.parse(text);
+    return {
+      filters: {
+        contentTypes: parsed.filters?.contentTypes || [],
+        signalTypes: parsed.filters?.signalTypes || [],
+        minViews: parsed.filters?.minViews ?? undefined,
+        minLikes: parsed.filters?.minLikes ?? undefined,
+        dateFrom: parsed.filters?.dateFrom ?? undefined,
+        dateTo: parsed.filters?.dateTo ?? undefined,
+        searchTerm: parsed.filters?.searchTerm ?? undefined,
+      },
+      sortBy: parsed.sortBy ?? undefined,
+    };
+  } catch (error) {
+    console.error("Post Query Parse Error:", error);
+    // Fallback: treat entire input as search term
+    return {
+      filters: { contentTypes: [], signalTypes: [], searchTerm: input },
+    };
+  }
+};
+
+export const generatePostPitchText = async (items: PostDockItem[], type: 'email' | 'mediakit', context: string): Promise<string> => {
+  try {
+    const ai = getAI();
+
+    const postsInfo = items.map(item => {
+      const signalSummary = item.post.signals.map(s => {
+        const typeLabel = s.type === 'visual' ? 'Visual' :
+                          s.type === 'audio' ? 'Audio' :
+                          s.type === 'caption' ? 'Caption' : 'Note';
+        return `${typeLabel}: "${s.excerpt}"`;
+      }).join('; ');
+
+      return `
+      - Content Type: ${item.post.contentType}
+      - Caption: "${item.post.caption.slice(0, 200)}"
+      - Stats: ${(item.post.stats.views / 1000).toFixed(0)}k views, ${(item.post.stats.likes / 1000).toFixed(1)}k likes, ${item.post.stats.comments} comments, ${(item.post.stats.shares / 1000).toFixed(1)}k shares
+      - Signals: ${signalSummary || 'None'}
+      - Score: ${item.post.compositeScore}/100
+      - Note: ${item.note || 'N/A'}
+      `;
+    }).join('\n');
+
+    const prompt = `
+      Generate a professional ${type === 'email' ? 'outreach email to a brand' : 'mediakit summary'} pitching the following content posts from a creator.
+
+      Context provided by user: "${context}"
+
+      Selected Posts:
+      ${postsInfo}
+
+      ${type === 'email'
+        ? 'Write a compelling email highlighting the performance and relevance of these posts. Reference specific stats and content signals.'
+        : 'Create a structured summary of these posts with their metrics, content signals, and why they demonstrate strong brand alignment.'}
+
+      Tone: Professional, persuasive, and concise.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: prompt,
+    });
+
+    return response.text || "Failed to generate pitch.";
+  } catch (error) {
+    console.error("Post Pitch Generation Error:", error);
+    return "Error generating pitch. Please check API key.";
   }
 };
 

@@ -1,16 +1,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { parseUserQuery } from './services/gemini';
-import { Creator, DockItem, QueryNode, Operator, NikeCreator, SemanticFilter, ParsedQueryResult } from './types';
+import { parseUserQuery, parsePostQuery } from './services/gemini';
+import { scoreAndRankPosts, applyPostFilters } from './services/scoring';
+import { Creator, DockItem, PostDockItem, QueryNode, Operator, NikeCreator, SemanticFilter, ParsedQueryResult, CreatorPost, PostFilterState, PostSortOption, DEFAULT_POST_FILTERS } from './types';
 import { MOCK_CREATORS, NIKE_CREATORS, COFFEE_CREATORS } from './constants';
+import { MARCUS_ACCOUNT } from './constants-creator-posts';
 import Navbar from './components/Navbar';
 import Canvas from './components/Canvas';
 import Commander from './components/Commander';
 import Dock from './components/Dock';
+import PostDock from './components/PostDock';
 import CreatorModal from './components/CreatorModal';
-import PitchGenerator from './components/PitchGenerator'; 
+import PitchGenerator from './components/PitchGenerator';
+import PostPitchGenerator from './components/PostPitchGenerator';
 
 // Simple ID generator
 const generateId = () => Math.random().toString(36).substr(2, 9);
+
+type ViewMode = 'creators' | 'account-posts';
 
 interface SelectionState {
   creator: Creator;
@@ -23,6 +29,10 @@ const App: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPitching, setIsPitching] = useState(false); // State for pitch mode
 
+  // Post dock state (account-posts mode)
+  const [postDockItems, setPostDockItems] = useState<PostDockItem[]>([]);
+  const [isPostPitching, setIsPostPitching] = useState(false);
+
   // Semantic search state
   const [semanticFilters, setSemanticFilters] = useState<SemanticFilter[]>([]);
   const [currentSearchQuery, setCurrentSearchQuery] = useState<string>('');
@@ -30,11 +40,32 @@ const App: React.FC = () => {
   // Selection state now tracks Context (which node was clicked)
   const [selection, setSelection] = useState<SelectionState | null>(null);
 
+  // View mode: creator search vs account posts
+  const [viewMode, setViewMode] = useState<ViewMode>('creators');
+
+  // Account-posts filter + sort state (lifted from Canvas)
+  const [postFilters, setPostFilters] = useState<PostFilterState>(DEFAULT_POST_FILTERS);
+  const [postSortBy, setPostSortBy] = useState<PostSortOption>('recency');
+
+  // Track whether user has searched in account-posts mode
+  const [hasPostSearched, setHasPostSearched] = useState(false);
+  const [isPostSearching, setIsPostSearching] = useState(false);
+
+  // --- Scored & Ranked Posts for Account Mode ---
+  const allRankedPosts = useMemo(() => {
+    if (viewMode !== 'account-posts') return [];
+    return scoreAndRankPosts(MARCUS_ACCOUNT.posts);
+  }, [viewMode]);
+
+  const filteredPosts = useMemo(() => {
+    return applyPostFilters(allRankedPosts, postFilters);
+  }, [allRankedPosts, postFilters]);
+
   // --- Logic Engine ---
-  
+
   const nodeResults = useMemo(() => {
     const resultsMap = new Map<string, Creator[]>();
-    let currentBaseSet: Creator[] = []; 
+    let currentBaseSet: Creator[] = [];
 
     nodes.forEach((node, index) => {
       if (!node.isActive) {
@@ -53,9 +84,9 @@ const App: React.FC = () => {
 
         // --- Keyword / Heuristic Filters ---
         const topics = node.filters.topics || [];
-        
+
         if (topics.length === 0 && !node.filters.gender && !node.filters.location && !node.filters.platform && !node.filters.minFollowers && !node.filters.minEngagement) {
-            return true; 
+            return true;
         }
 
         const joinedTopics = topics.join(' ').toLowerCase();
@@ -89,7 +120,7 @@ const App: React.FC = () => {
 
         // --- Content Matching ---
         const controlWords = ['male', 'female', 'man', 'woman', 'men', 'women', 'only', 'also', 'except', 'in', 'on', 'from', 'who', 'show', 'me', 'ny', 'nyc', 'new york', 'la', 'creators', 'creator', 'users', 'influencers', 'people', 'limit', 'add', 'remove', 'more', 'than', 'over', 'under', 'less', 'engagement', 'followers', 'rate', 'min', 'max'];
-        
+
         const contentKeywords = topics.filter(t => {
             const words = t.toLowerCase().split(/[\s,]+/);
             const significant = words.filter(w => !controlWords.includes(w) && w.length > 1 && !w.match(/^\d+$/) && !w.includes('%') && !w.includes('k'));
@@ -104,7 +135,7 @@ const App: React.FC = () => {
                  if (k.includes('basket') && c.topics.some(t => t.toLowerCase().includes('basket'))) return true;
                  if (k.includes('fit') && c.topics.some(t => t.toLowerCase().includes('fit'))) return true;
                  if (k.includes('fash') && c.topics.some(t => t.toLowerCase().includes('fash'))) return true;
-                 
+
                  // Direct match
                  if (c.name.toLowerCase().includes(k)) return true;
                  if (c.handle.toLowerCase().includes(k)) return true;
@@ -112,7 +143,7 @@ const App: React.FC = () => {
 
                  return false;
              });
-             
+
              if (!hasMatch) return false;
         }
 
@@ -128,13 +159,13 @@ const App: React.FC = () => {
       } else if (node.operator === 'AND') {
         // Narrow the current base set
         finalMatches = currentBaseSet.filter(c => candidates.some(cand => cand.id === c.id));
-        currentBaseSet = finalMatches; 
+        currentBaseSet = finalMatches;
       } else if (node.operator === 'OR') {
-        // Add a new branch (Candidates of this node). 
+        // Add a new branch (Candidates of this node).
         finalMatches = candidates;
       } else if (node.operator === 'NOT') {
         // Exclude candidates from the base set
-        finalMatches = []; 
+        finalMatches = [];
         currentBaseSet = currentBaseSet.filter(c => !candidates.some(cand => cand.id === c.id));
       }
 
@@ -147,6 +178,58 @@ const App: React.FC = () => {
   // --- Handlers ---
 
   const handleCommanderSubmit = async (inputText: string) => {
+    // In account-posts mode, use Commander → Gemini to set structured filters
+    if (viewMode === 'account-posts') {
+      setHasPostSearched(true);
+      setIsPostSearching(true);
+
+      // Immediate: apply as text search
+      setPostFilters({ ...DEFAULT_POST_FILTERS, searchTerm: inputText });
+
+      // Switch to scored view on first search
+      if (postSortBy === 'recency') setPostSortBy('composite');
+
+      // Simple queries (1-2 words, no filter keywords) skip Gemini entirely
+      const isSimpleQuery = inputText.trim().split(/\s+/).length <= 2 &&
+        !/\b(reels?|stories|carousel|video|views?|likes?|recent|popular|trending|before|after|from|since)\b/i.test(inputText);
+
+      if (isSimpleQuery) {
+        setTimeout(() => setIsPostSearching(false), 600);
+        return;
+      }
+
+      // Keep skeletons until Gemini resolves, with a minimum 600ms shimmer
+      const minShimmer = new Promise(r => setTimeout(r, 600));
+
+      parsePostQuery(inputText)
+        .then(async result => {
+          await minShimmer;
+          const hasStructuredFilters =
+            (result.filters.contentTypes && result.filters.contentTypes.length > 0) ||
+            (result.filters.signalTypes && result.filters.signalTypes.length > 0) ||
+            result.filters.minViews != null ||
+            result.filters.minLikes != null ||
+            result.filters.dateFrom != null;
+
+          if (hasStructuredFilters) {
+            setPostFilters({
+              ...DEFAULT_POST_FILTERS,
+              ...result.filters,
+              contentTypes: result.filters.contentTypes || [],
+              signalTypes: result.filters.signalTypes || [],
+            });
+          }
+          if (result.sortBy) setPostSortBy(result.sortBy);
+          setIsPostSearching(false);
+        })
+        .catch(async () => {
+          await minShimmer;
+          setIsPostSearching(false);
+        });
+
+      return;
+    }
+
     setIsProcessing(true);
     setCurrentSearchQuery(inputText);
     try {
@@ -242,8 +325,25 @@ const App: React.FC = () => {
   };
 
   const handleUpdateDockNote = (creatorId: string, note: string) => {
-    setDockItems(prev => prev.map(item => 
+    setDockItems(prev => prev.map(item =>
       item.creator.id === creatorId ? { ...item, note } : item
+    ));
+  };
+
+  const handleAddPostToDock = (post: CreatorPost) => {
+    setPostDockItems(prev => {
+      if (prev.find(i => i.post.id === post.id)) return prev;
+      return [...prev, { post, note: '' }];
+    });
+  };
+
+  const handleRemovePostFromDock = (postId: string) => {
+    setPostDockItems(prev => prev.filter(i => i.post.id !== postId));
+  };
+
+  const handleUpdatePostDockNote = (postId: string, note: string) => {
+    setPostDockItems(prev => prev.map(item =>
+      item.post.id === postId ? { ...item, note } : item
     ));
   };
 
@@ -264,6 +364,26 @@ const App: React.FC = () => {
 
   const handleSelectCreator = (creator: Creator, nodeId: string) => {
     setSelection({ creator, nodeId });
+  };
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    if (mode === 'creators') {
+      setPostFilters(DEFAULT_POST_FILTERS);
+      setPostSortBy('recency');
+    }
+    if (mode === 'account-posts') {
+      // Reset to fresh recency state
+      setPostFilters(DEFAULT_POST_FILTERS);
+      setPostSortBy('recency');
+      setHasPostSearched(false);
+      setIsPostSearching(false);
+    }
+    if (mode === 'creators') {
+      // Clear post dock when switching away
+      setPostDockItems([]);
+      setIsPostPitching(false);
+    }
   };
 
   const nodeCounts = useMemo(() => {
@@ -288,21 +408,23 @@ const App: React.FC = () => {
   }, [nodes]);
 
   // Determine search mode
-  const searchMode: 'nike' | 'coffee' | 'standard' = useMemo(() => {
+  const searchMode: 'nike' | 'coffee' | 'standard' | 'single-creator' = useMemo(() => {
+    if (viewMode === 'account-posts') return 'single-creator';
     if (isNikeSearch) return 'nike';
     if (isCoffeeSearch) return 'coffee';
     return 'standard';
-  }, [isNikeSearch, isCoffeeSearch]);
+  }, [viewMode, isNikeSearch, isCoffeeSearch]);
 
   // Determine Visibility
   const hasNodes = nodes.length > 0;
   const hasDockItems = dockItems.length > 0;
+  const hasPostDockItems = postDockItems.length > 0;
 
   return (
     <div className="flex flex-col h-screen w-screen bg-background text-zinc-100 overflow-hidden font-sans">
 
       {/* Top Navbar */}
-      <Navbar />
+      <Navbar viewMode={viewMode} onViewModeChange={handleViewModeChange} />
 
       {/* Main Workspace */}
       <div className="flex flex-1 overflow-hidden relative">
@@ -313,6 +435,14 @@ const App: React.FC = () => {
             items={dockItems}
             onClose={() => setIsPitching(false)}
             onOpenItem={(item) => setSelection({ creator: item.creator, nodeId: item.sourceNodeId })}
+          />
+        )}
+
+        {/* POST PITCH GENERATOR: Overlays workspace in account-posts mode */}
+        {isPostPitching && (
+          <PostPitchGenerator
+            items={postDockItems}
+            onClose={() => setIsPostPitching(false)}
           />
         )}
 
@@ -329,45 +459,79 @@ const App: React.FC = () => {
             semanticFilters={semanticFilters}
             currentSearchQuery={currentSearchQuery}
             isProcessing={isProcessing}
+            singleCreatorAccount={viewMode === 'account-posts' ? MARCUS_ACCOUNT : undefined}
+            rankedPosts={viewMode === 'account-posts' ? filteredPosts : undefined}
+            totalPosts={viewMode === 'account-posts' ? allRankedPosts.length : undefined}
+            postFilters={viewMode === 'account-posts' ? postFilters : undefined}
+            onPostFiltersChange={setPostFilters}
+            postSortBy={viewMode === 'account-posts' ? postSortBy : undefined}
+            onPostSortByChange={setPostSortBy}
+            hasPostSearched={viewMode === 'account-posts' ? hasPostSearched : undefined}
+            isPostSearching={viewMode === 'account-posts' ? isPostSearching : undefined}
+            onAddPostToDock={viewMode === 'account-posts' ? handleAddPostToDock : undefined}
+            selectedPostIds={postDockItems.map(i => i.post.id)}
           />
 
           {/* Zone C: The Commander (Floating) - HIDDEN WHEN PITCHING */}
           {!isPitching && (
-             <Commander onSubmit={handleCommanderSubmit} isProcessing={isProcessing} />
+             <Commander onSubmit={handleCommanderSubmit} isProcessing={isProcessing} viewMode={viewMode} />
           )}
         </main>
 
-        {/* Zone D: The Dock */}
-        <aside
-          className={`
-            border-l border-zinc-800 bg-zinc-950 flex-shrink-0 z-40 transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]
-            ${hasDockItems ? 'w-96 opacity-100 translate-x-0' : 'w-0 opacity-0 translate-x-4'}
-          `}
-          onDrop={handleDockDrop}
-          onDragOver={(e) => e.preventDefault()}
-        >
-          <div className="w-96 h-full">
-            <Dock
-              items={dockItems}
-              onRemoveItem={handleRemoveFromDock}
-              onUpdateNote={handleUpdateDockNote}
-              onGenerate={() => setIsPitching(true)}
-            />
-          </div>
-        </aside>
+        {/* Zone D: The Dock — creator mode */}
+        {viewMode === 'creators' && (
+          <aside
+            className={`
+              border-l border-zinc-800 bg-zinc-950 flex-shrink-0 z-40 transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]
+              ${hasDockItems ? 'w-96 opacity-100 translate-x-0' : 'w-0 opacity-0 translate-x-4'}
+            `}
+            onDrop={handleDockDrop}
+            onDragOver={(e) => e.preventDefault()}
+          >
+            <div className="w-96 h-full">
+              <Dock
+                items={dockItems}
+                onRemoveItem={handleRemoveFromDock}
+                onUpdateNote={handleUpdateDockNote}
+                onGenerate={() => setIsPitching(true)}
+              />
+            </div>
+          </aside>
+        )}
+
+        {/* Zone D: Post Dock — account-posts mode */}
+        {viewMode === 'account-posts' && (
+          <aside
+            className={`
+              border-l border-zinc-800 bg-zinc-950 flex-shrink-0 z-40 transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]
+              ${hasPostDockItems ? 'w-96 opacity-100 translate-x-0' : 'w-0 opacity-0 translate-x-4'}
+            `}
+          >
+            <div className="w-96 h-full">
+              <PostDock
+                items={postDockItems}
+                onRemoveItem={handleRemovePostFromDock}
+                onUpdateNote={handleUpdatePostDockNote}
+                onGenerate={() => setIsPostPitching(true)}
+              />
+            </div>
+          </aside>
+        )}
       </div>
 
-      {/* Detail Modal */}
-      <CreatorModal
-        creator={selection?.creator || null}
-        triggeringNode={nodes.find(n => n.id === selection?.nodeId)}
-        onClose={() => setSelection(null)}
-        onAddToDock={(c) => {
-            handleAddToDock(c);
-            setSelection(null);
-        }}
-        searchMode={searchMode}
-      />
+      {/* Detail Modal — only for creator search mode */}
+      {viewMode === 'creators' && (
+        <CreatorModal
+          creator={selection?.creator || null}
+          triggeringNode={nodes.find(n => n.id === selection?.nodeId)}
+          onClose={() => setSelection(null)}
+          onAddToDock={(c) => {
+              handleAddToDock(c);
+              setSelection(null);
+          }}
+          searchMode={searchMode}
+        />
+      )}
 
     </div>
   );

@@ -39,6 +39,11 @@ export interface DockItem {
   note?: string; // "Why I picked this"
 }
 
+export interface PostDockItem {
+  post: CreatorPost;
+  note?: string;
+}
+
 // Brand Demo Types
 export type MatchType = 'visual' | 'audio' | 'caption' | 'personalNote';
 
@@ -90,4 +95,90 @@ export interface SemanticFilter {
 // Parsed query result from Gemini including semantic filters
 export interface ParsedQueryResult extends Partial<QueryNode> {
   semanticFilters?: SemanticFilter[];
+}
+
+// --- Single-Creator Post Flow Types ---
+
+export interface PostSignal {
+  type: MatchType;
+  confidence: number;
+  timestamp?: string;
+  excerpt: string;
+  context?: string;
+  frequency: number;
+  density: 'prominent' | 'moderate' | 'passing';
+}
+
+export interface SignalScoreDetail {
+  type: MatchType;
+  basePoints: number;
+  frequencyMultiplier: number;
+  densityMultiplier: number;
+  totalPoints: number;
+}
+
+export interface ScoreBreakdown {
+  captionPoints: number;
+  audioPoints: number;
+  visualPoints: number;
+  reinforcementBonus: number;
+  baseTotal: number;
+  normalizedScore: number;
+  signalCount: number;
+  dominantSignal: MatchType | null;
+  signalDetails: SignalScoreDetail[];
+}
+
+export interface CreatorPost {
+  id: string;
+  thumbnail: string;
+  contentType: ContentType;
+  caption: string;
+  postedAt: string;
+  stats: {
+    views: number;
+    likes: number;
+    comments: number;
+    shares: number;
+  };
+  signals: PostSignal[];
+  compositeScore: number;
+  scoreBreakdown: ScoreBreakdown;
+}
+
+export interface CreatorAccount {
+  id: string;
+  name: string;
+  handle: string;
+  avatar: string;
+  platform: 'TikTok' | 'Instagram' | 'YouTube';
+  followers: number;
+  engagementRate: number;
+  bio: string;
+  posts: CreatorPost[];
+}
+
+// --- Post Filter Types ---
+
+export type PostSortOption = 'composite' | 'signals' | 'engagement' | 'recency';
+
+export interface PostFilterState {
+  contentTypes: ContentType[];   // empty = show all
+  signalTypes: MatchType[];      // empty = show all
+  minViews?: number;
+  minLikes?: number;
+  dateFrom?: string;             // ISO 8601
+  dateTo?: string;
+  platform?: 'TikTok' | 'Instagram' | 'YouTube';
+  searchTerm?: string;
+}
+
+export const DEFAULT_POST_FILTERS: PostFilterState = {
+  contentTypes: [],
+  signalTypes: [],
+};
+
+export interface ParsedPostFilterResult {
+  filters: Partial<PostFilterState>;
+  sortBy?: PostSortOption;
 }
